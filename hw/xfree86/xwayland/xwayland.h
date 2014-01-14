@@ -79,6 +79,9 @@ xwl_drm_authenticate(ClientPtr client, struct xwl_screen *xwl_screen,
 		     uint32_t magic);
 
 extern _X_EXPORT int
+xwl_device_get_fd(struct xwl_screen *xwl_screen);
+
+extern _X_EXPORT int
 xwl_create_window_buffer_drm(struct xwl_window *xwl_window,
 			     PixmapPtr pixmap, uint32_t name);
 

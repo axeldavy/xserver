@@ -157,13 +157,49 @@ is_fd_render_node(int fd)
 }
 
 int
-xwl_drm_pre_init(struct xwl_screen *xwl_screen)
+xwl_device_get_fd(struct xwl_screen *xwl_screen)
 {
     uint32_t magic;
+    int fd;
 
+    fd = open(xwl_screen->device_name, O_RDWR);
+    if (fd < 0) {
+	ErrorF("failed to open the drm fd\n");
+	return -1;
+    }
+
+    if (!is_fd_render_node(fd)) {
+
+	if (drmGetMagic(fd, &magic)) {
+	    ErrorF("failed to get drm magic");
+	    close (fd);
+	    return -1;
+	}
+
+	xwl_screen->authenticated = 0;
+	wl_drm_authenticate(xwl_screen->drm, magic);
+	wl_display_roundtrip(xwl_screen->display);
+
+	ErrorF("opened drm fd: %d\n", fd);
+
+	if (!xwl_screen->authenticated) {
+	    ErrorF("Failed to auth drm fd\n");
+	    close (fd);
+	    return -1;
+	}
+    } else {
+	xwl_screen->authenticated = 1;
+    }
+
+    return fd;
+}
+
+int
+xwl_drm_pre_init(struct xwl_screen *xwl_screen)
+{
     xwl_screen->drm_registry = wl_display_get_registry(xwl_screen->display);
     wl_registry_add_listener(xwl_screen->drm_registry, &drm_listener,
-			     xwl_screen);
+                             xwl_screen);
 
     /* Ensure drm_handler has seen all the interfaces */
     wl_display_roundtrip(xwl_screen->display);
@@ -173,31 +209,9 @@ xwl_drm_pre_init(struct xwl_screen *xwl_screen)
     ErrorF("wayland_drm_screen_init, device name %s\n",
 	   xwl_screen->device_name);
 
-    xwl_screen->drm_fd = open(xwl_screen->device_name, O_RDWR);
+    xwl_screen->drm_fd = xwl_device_get_fd(xwl_screen);
     if (xwl_screen->drm_fd < 0) {
-	ErrorF("failed to open the drm fd\n");
 	return BadAccess;
-    }
-
-    if (!is_fd_render_node(xwl_screen->drm_fd)) {
-
-	if (drmGetMagic(xwl_screen->drm_fd, &magic)) {
-	    ErrorF("failed to get drm magic");
-	    return BadAccess;
-	}
-
-	wl_drm_authenticate(xwl_screen->drm, magic);
-
-	wl_display_roundtrip(xwl_screen->display);
-
-	ErrorF("opened drm fd: %d\n", xwl_screen->drm_fd);
-
-	if (!xwl_screen->authenticated) {
-	    ErrorF("Failed to auth drm fd\n");
-	    return BadAccess;
-	}
-    } else {
-	xwl_screen->authenticated = 1;
     }
 
     return Success;
