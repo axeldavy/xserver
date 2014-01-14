@@ -31,11 +31,14 @@
 struct xwl_window {
     struct xwl_screen		*xwl_screen;
     struct wl_surface		*surface;
-    struct wl_buffer		*buffer;
     WindowPtr			 window;
     DamagePtr			 damage;
     struct xorg_list		 link;
     struct xorg_list		 link_damage;
+};
+
+struct xwl_pixmap {
+    struct wl_buffer		*buffer;
 };
 
 struct xwl_output;
@@ -73,7 +76,7 @@ struct xwl_screen {
     DestroyWindowProcPtr	 DestroyWindow;
     RealizeWindowProcPtr	 RealizeWindow;
     UnrealizeWindowProcPtr	 UnrealizeWindow;
-    SetWindowPixmapProcPtr	 SetWindowPixmap;
+    DestroyPixmapProcPtr	 DestroyPixmap;
     MoveWindowProcPtr		 MoveWindow;
     miPointerSpriteFuncPtr	 sprite_funcs;
 };
@@ -136,6 +139,10 @@ Bool xwl_drm_initialised(struct xwl_screen *screen);
 void xwl_seat_set_cursor(struct xwl_seat *xwl_seat);
 
 void xwl_output_remove(struct xwl_output *output);
+
+void xwl_pixmap_attach_buffer(PixmapPtr pixmap, struct wl_buffer *buffer);
+struct xwl_pixmap *xwl_window_get_buffer(struct xwl_window *xwl_window);
+struct xwl_window *get_xwl_window(WindowPtr window);
 
 extern const struct xserver_listener xwl_server_listener;
 

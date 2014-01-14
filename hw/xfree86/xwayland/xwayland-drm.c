@@ -217,6 +217,7 @@ xwl_create_window_buffer_drm(struct xwl_window *xwl_window,
     VisualID visual;
     WindowPtr window = xwl_window->window;
     ScreenPtr screen = window->drawable.pScreen;
+    struct wl_buffer *buffer;
     uint32_t format;
     int i;
 
@@ -238,7 +239,7 @@ xwl_create_window_buffer_drm(struct xwl_window *xwl_window,
         break;
     }
 
-    xwl_window->buffer =
+    buffer =
       wl_drm_create_buffer(xwl_window->xwl_screen->drm,
 			   name,
 			   pixmap->drawable.width,
@@ -246,5 +247,10 @@ xwl_create_window_buffer_drm(struct xwl_window *xwl_window,
 			   pixmap->devKind,
 			   format);
 
-    return xwl_window->buffer ? Success : BadDrawable;
+    if (!buffer)
+	return BadDrawable;
+
+    xwl_pixmap_attach_buffer(pixmap, buffer);
+
+    return Success;
 }

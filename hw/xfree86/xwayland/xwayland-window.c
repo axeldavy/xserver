@@ -41,6 +41,13 @@
 #include "xserver-client-protocol.h"
 
 static DevPrivateKeyRec xwl_window_private_key;
+static DevPrivateKeyRec xwl_pixmap_private_key;
+
+struct xwl_window *
+get_xwl_window(WindowPtr window)
+{
+    return dixLookupPrivate(&window->devPrivates, &xwl_window_private_key);
+}
 
 static void
 free_pixmap(void *data, struct wl_callback *callback, uint32_t time)
@@ -56,25 +63,38 @@ static const struct wl_callback_listener free_pixmap_listener = {
 	free_pixmap,
 };
 
+void
+xwl_pixmap_attach_buffer(PixmapPtr pixmap, struct wl_buffer *buffer)
+{
+    struct xwl_pixmap *xwl_pixmap = calloc(sizeof *xwl_pixmap, 1);
+    if (!xwl_pixmap) {
+	wl_buffer_destroy(buffer);
+	return;
+    }
+    xwl_pixmap->buffer = buffer;
+    dixSetPrivate(&pixmap->devPrivates, &xwl_pixmap_private_key, xwl_pixmap);
+}
+
 static void
 xwl_window_attach(struct xwl_window *xwl_window, PixmapPtr pixmap)
 {
     struct xwl_screen *xwl_screen = xwl_window->xwl_screen;
     struct wl_callback *callback;
+    struct xwl_pixmap *xwl_pixmap =
+	dixLookupPrivate(&pixmap->devPrivates, &xwl_pixmap_private_key);
 
-    /* We can safely destroy the buffer because we only use one buffer
-     * per surface in xwayland model */
-    if (xwl_window->buffer)
-        wl_buffer_destroy(xwl_window->buffer);
+    if (!xwl_pixmap) {
+	xwl_screen->driver->create_window_buffer(xwl_window, pixmap);
+	xwl_pixmap =
+	    dixLookupPrivate(&pixmap->devPrivates, &xwl_pixmap_private_key);
 
-    xwl_screen->driver->create_window_buffer(xwl_window, pixmap);
-
-    if (!xwl_window->buffer) {
-        ErrorF("failed to create buffer\n");
-	return;
+	if (!xwl_pixmap) {
+	    ErrorF("failed to create buffer\n");
+	    return;
+	}
     }
 
-    wl_surface_attach(xwl_window->surface, xwl_window->buffer, 0, 0);
+    wl_surface_attach(xwl_window->surface, xwl_pixmap->buffer, 0, 0);
     wl_surface_damage(xwl_window->surface, 0, 0,
 		      pixmap->drawable.width,
 		      pixmap->drawable.height);
@@ -82,6 +102,23 @@ xwl_window_attach(struct xwl_window *xwl_window, PixmapPtr pixmap)
     callback = wl_display_sync(xwl_screen->display);
     wl_callback_add_listener(callback, &free_pixmap_listener, pixmap);
     pixmap->refcnt++;
+}
+
+struct xwl_pixmap *
+xwl_window_get_buffer(struct xwl_window *xwl_window)
+{
+    PixmapPtr pixmap = (*xwl_window->xwl_screen->screen->GetWindowPixmap)
+	(xwl_window->window);
+    struct xwl_pixmap *xwl_pixmap =
+	dixLookupPrivate(&pixmap->devPrivates, &xwl_pixmap_private_key);
+
+    if (!xwl_pixmap) {
+	xwl_window_attach(xwl_window, pixmap);
+	return dixLookupPrivate(&pixmap->devPrivates,
+				&xwl_pixmap_private_key);
+    } else {
+	return xwl_pixmap;
+    }
 }
 
 static void
@@ -184,8 +221,6 @@ xwl_unrealize_window(WindowPtr window)
     if (!xwl_window)
 	return ret;
 
-    if (xwl_window->buffer)
-	wl_buffer_destroy(xwl_window->buffer);
     wl_surface_destroy(xwl_window->surface);
     xorg_list_del(&xwl_window->link);
     if (RegionNotEmpty(DamageRegion(xwl_window->damage)))
@@ -198,24 +233,30 @@ xwl_unrealize_window(WindowPtr window)
     return ret;
 }
 
-static void
-xwl_set_window_pixmap(WindowPtr window, PixmapPtr pixmap)
+static Bool
+xwl_destroy_pixmap(PixmapPtr pixmap)
 {
-    ScreenPtr screen = window->drawable.pScreen;
-    struct xwl_screen *xwl_screen;
-    struct xwl_window *xwl_window;
+    ScreenPtr screen = pixmap->drawable.pScreen;
+    struct xwl_screen *xwl_screen = xwl_screen_get(screen);
+    Bool ret;
 
-    xwl_screen = xwl_screen_get(screen);
+    if (pixmap->refcnt == 1) {
+	struct xwl_pixmap *xwl_pixmap =
+	    dixLookupPrivate(&pixmap->devPrivates, &xwl_pixmap_private_key);
+	if (xwl_pixmap) {
+	    wl_buffer_destroy(xwl_pixmap->buffer);
+	    dixSetPrivate(&pixmap->devPrivates, &xwl_pixmap_private_key,
+			  NULL);
+	    free(xwl_pixmap);
+	}
+    }
 
-    screen->SetWindowPixmap = xwl_screen->SetWindowPixmap;
-    (*screen->SetWindowPixmap)(window, pixmap);
-    xwl_screen->SetWindowPixmap = screen->SetWindowPixmap;
-    screen->SetWindowPixmap = xwl_set_window_pixmap;
+    screen->DestroyPixmap = xwl_screen->DestroyPixmap;
+    ret = (*screen->DestroyPixmap)(pixmap);
+    xwl_screen->DestroyPixmap = screen->DestroyPixmap;
+    screen->DestroyPixmap = xwl_destroy_pixmap;
 
-    xwl_window =
-	dixLookupPrivate(&window->devPrivates, &xwl_window_private_key);
-    if (xwl_window)
-	xwl_window_attach(xwl_window, pixmap);
+    return ret;
 }
 
 static void
@@ -245,14 +286,17 @@ xwl_screen_init_window(struct xwl_screen *xwl_screen, ScreenPtr screen)
     if (!dixRegisterPrivateKey(&xwl_window_private_key, PRIVATE_WINDOW, 0))
 	return BadAlloc;
 
+    if (!dixRegisterPrivateKey(&xwl_pixmap_private_key, PRIVATE_PIXMAP, 0))
+	return BadAlloc;
+
     xwl_screen->RealizeWindow = screen->RealizeWindow;
     screen->RealizeWindow = xwl_realize_window;
 
     xwl_screen->UnrealizeWindow = screen->UnrealizeWindow;
     screen->UnrealizeWindow = xwl_unrealize_window;
 
-    xwl_screen->SetWindowPixmap = screen->SetWindowPixmap;
-    screen->SetWindowPixmap = xwl_set_window_pixmap;
+    xwl_screen->DestroyPixmap = screen->DestroyPixmap;
+    screen->DestroyPixmap = xwl_destroy_pixmap;
 
     xwl_screen->MoveWindow = screen->MoveWindow;
     screen->MoveWindow = xwl_move_window;

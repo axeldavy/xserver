@@ -247,6 +247,7 @@ xwl_create_window_buffer_shm(struct xwl_window *xwl_window,
     WindowPtr window = xwl_window->window;
     ScreenPtr screen = window->drawable.pScreen;
     VisualID visual = wVisual(window);
+    struct wl_buffer *buffer;
     uint32_t format;
     int size, stride, bpp, i;
 
@@ -277,13 +278,18 @@ xwl_create_window_buffer_shm(struct xwl_window *xwl_window,
     size = stride * pixmap->drawable.height;
 
     pool = wl_shm_create_pool(xwl_window->xwl_screen->shm, fd, size);
-    xwl_window->buffer =  wl_shm_pool_create_buffer(pool, 0,
+    buffer =  wl_shm_pool_create_buffer(pool, 0,
 			   pixmap->drawable.width,
 			   pixmap->drawable.height,
 			   stride, format);
     wl_shm_pool_destroy(pool);
 
-    return xwl_window->buffer ? Success : BadDrawable;
+    if (!buffer)
+	return BadDrawable;
+
+    xwl_pixmap_attach_buffer(pixmap, buffer);
+
+    return Success;
 }
 
 void xwl_screen_close(struct xwl_screen *xwl_screen)
@@ -302,7 +308,6 @@ void xwl_screen_close(struct xwl_screen *xwl_screen)
     }
     xorg_list_for_each_entry_safe(xwl_window, wtmp,
 				  &xwl_screen->window_list, link) {
-	wl_buffer_destroy(xwl_window->buffer);
 	wl_surface_destroy(xwl_window->surface);
 	free(xwl_window);
     }
@@ -334,22 +339,29 @@ void xwl_screen_post_damage(struct xwl_screen *xwl_screen)
     RegionPtr region;
     BoxPtr box;
     int count, i;
+    struct xwl_pixmap *xwl_pixmap;
 
     xorg_list_for_each_entry(xwl_window, &xwl_screen->damage_window_list,
 			     link_damage) {
 	region = DamageRegion(xwl_window->damage);
 	count = RegionNumRects(region);
-	for (i = 0; i < count; i++) {
-	    box = &RegionRects(region)[i];
-	    wl_surface_damage(xwl_window->surface,
-			      box->x1, box->y1,
-			      box->x2 - box->x1,
-			      box->y2 - box->y1);
+	xwl_pixmap = xwl_window_get_buffer(xwl_window);
+	/* in the case we have no xwl_buffer associated to a xwl_window,
+	 * because of incompatible pixmap, or memory shortage, we are
+	 * going to retry later to create the buffer */
+	if (xwl_pixmap) {
+	    for (i = 0; i < count; i++) {
+		box = &RegionRects(region)[i];
+		wl_surface_damage(xwl_window->surface,
+				  box->x1, box->y1,
+				  box->x2 - box->x1,
+				  box->y2 - box->y1);
+	    }
+	    wl_surface_attach(xwl_window->surface,
+			      xwl_pixmap->buffer,
+			      0, 0);
+	    wl_surface_commit(xwl_window->surface);
 	}
-	wl_surface_attach(xwl_window->surface,
-			  xwl_window->buffer,
-			  0, 0);
-	wl_surface_commit(xwl_window->surface);
 	DamageEmpty(xwl_window->damage);
     }
 
