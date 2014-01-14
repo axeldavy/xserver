@@ -29,6 +29,7 @@
 
 #include <unistd.h>
 #include <fcntl.h>
+#include <sys/stat.h>
 
 #include <xf86drm.h>
 #include <wayland-util.h>
@@ -99,11 +100,20 @@ drm_handle_authenticated (void *data, struct wl_drm *drm)
     }
 }
 
+static void
+drm_handle_capabilities(void *data, struct wl_drm *drm, uint32_t value)
+{
+    struct xwl_screen *xwl_screen = data;
+
+    xwl_screen->drm_capabilities = value;
+}
+
 static const struct wl_drm_listener xwl_drm_listener =
 {
     drm_handle_device,
     drm_handle_format,
-    drm_handle_authenticated
+    drm_handle_authenticated,
+    drm_handle_capabilities
 };
 
 static void
@@ -114,7 +124,7 @@ drm_handler(void *data, struct wl_registry *registry, uint32_t id,
 
     if (strcmp (interface, "wl_drm") == 0) {
 	xwl_screen->drm = wl_registry_bind(xwl_screen->registry, id,
-                                           &wl_drm_interface, 1);
+                                           &wl_drm_interface, 2);
 	wl_drm_add_listener(xwl_screen->drm, &xwl_drm_listener, xwl_screen);
     }
 }
@@ -130,6 +140,22 @@ static const struct wl_registry_listener drm_listener = {
     global_remove
 };
 
+static char
+is_fd_render_node(int fd)
+{
+    struct stat render;
+
+    if (fstat(fd, &render))
+	return 0;
+
+    if (!S_ISCHR(render.st_mode))
+	return 0;
+
+    if (render.st_rdev & 0x80)
+	return 1;
+    return 0;
+}
+
 int
 xwl_drm_pre_init(struct xwl_screen *xwl_screen)
 {
@@ -137,7 +163,7 @@ xwl_drm_pre_init(struct xwl_screen *xwl_screen)
 
     xwl_screen->drm_registry = wl_display_get_registry(xwl_screen->display);
     wl_registry_add_listener(xwl_screen->drm_registry, &drm_listener,
-                             xwl_screen);
+			     xwl_screen);
 
     /* Ensure drm_handler has seen all the interfaces */
     wl_display_roundtrip(xwl_screen->display);
@@ -153,20 +179,25 @@ xwl_drm_pre_init(struct xwl_screen *xwl_screen)
 	return BadAccess;
     }
 
-    if (drmGetMagic(xwl_screen->drm_fd, &magic)) {
-	ErrorF("failed to get drm magic");
-	return BadAccess;
-    }
+    if (!is_fd_render_node(xwl_screen->drm_fd)) {
 
-    wl_drm_authenticate(xwl_screen->drm, magic);
+	if (drmGetMagic(xwl_screen->drm_fd, &magic)) {
+	    ErrorF("failed to get drm magic");
+	    return BadAccess;
+	}
 
-    wl_display_roundtrip(xwl_screen->display);
+	wl_drm_authenticate(xwl_screen->drm, magic);
 
-    ErrorF("opened drm fd: %d\n", xwl_screen->drm_fd);
+	wl_display_roundtrip(xwl_screen->display);
 
-    if (!xwl_screen->authenticated) {
-	ErrorF("Failed to auth drm fd\n");
-	return BadAccess;
+	ErrorF("opened drm fd: %d\n", xwl_screen->drm_fd);
+
+	if (!xwl_screen->authenticated) {
+	    ErrorF("Failed to auth drm fd\n");
+	    return BadAccess;
+	}
+    } else {
+	xwl_screen->authenticated = 1;
     }
 
     return Success;
@@ -175,6 +206,11 @@ xwl_drm_pre_init(struct xwl_screen *xwl_screen)
 Bool xwl_drm_initialised(struct xwl_screen *xwl_screen)
 {
     return xwl_screen->authenticated;
+}
+
+Bool xwl_drm_prime_able(struct xwl_screen *xwl_screen)
+{
+    return xwl_screen->drm_capabilities & WL_DRM_CAPABILITY_PRIME;
 }
 
 int xwl_screen_get_drm_fd(struct xwl_screen *xwl_screen)
@@ -246,6 +282,52 @@ xwl_create_window_buffer_drm(struct xwl_window *xwl_window,
 			   pixmap->drawable.height,
 			   pixmap->devKind,
 			   format);
+
+    if (!buffer)
+	return BadDrawable;
+
+    xwl_pixmap_attach_buffer(pixmap, buffer);
+
+    return Success;
+}
+
+int
+xwl_create_window_buffer_drm_from_fd(struct xwl_window *xwl_window,
+				     PixmapPtr pixmap, int fd)
+{
+    VisualID visual;
+    WindowPtr window = xwl_window->window;
+    ScreenPtr screen = window->drawable.pScreen;
+    struct wl_buffer *buffer;
+    uint32_t format;
+    int i;
+
+    visual = wVisual(window);
+    for (i = 0; i < screen->numVisuals; i++)
+	if (screen->visuals[i].vid == visual)
+	    break;
+
+    switch (screen->visuals[i].nplanes) {
+    case 32:
+	format = WL_DRM_FORMAT_ARGB8888;
+	break;
+    case 24:
+    default:
+	format = WL_DRM_FORMAT_XRGB8888;
+	break;
+    case 16:
+	format = WL_DRM_FORMAT_RGB565;
+	break;
+    }
+
+    buffer =
+	wl_drm_create_prime_buffer(xwl_window->xwl_screen->drm,
+				   fd,
+				   pixmap->drawable.width,
+				   pixmap->drawable.height,
+				   format, 0,
+				   pixmap->devKind,
+				   0, 0, 0, 0);
 
     if (!buffer)
 	return BadDrawable;

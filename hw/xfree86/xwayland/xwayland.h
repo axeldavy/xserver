@@ -71,6 +71,9 @@ xwl_screen_destroy(struct xwl_screen *xwl_screen);
 extern _X_EXPORT void
 xwl_screen_post_damage(struct xwl_screen *xwl_screen);
 
+extern _X_EXPORT Bool
+xwl_drm_prime_able(struct xwl_screen *xwl_screen);
+
 extern _X_EXPORT int
 xwl_drm_authenticate(ClientPtr client, struct xwl_screen *xwl_screen,
 		     uint32_t magic);
@@ -78,6 +81,10 @@ xwl_drm_authenticate(ClientPtr client, struct xwl_screen *xwl_screen,
 extern _X_EXPORT int
 xwl_create_window_buffer_drm(struct xwl_window *xwl_window,
 			     PixmapPtr pixmap, uint32_t name);
+
+extern _X_EXPORT int
+xwl_create_window_buffer_drm_from_fd(struct xwl_window *xwl_window,
+				     PixmapPtr pixmap, int fd);
 
 extern _X_EXPORT int
 xwl_create_window_buffer_shm(struct xwl_window *xwl_window,

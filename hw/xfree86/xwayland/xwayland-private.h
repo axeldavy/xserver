@@ -48,6 +48,7 @@ struct xwl_screen {
     ScreenPtr			 screen;
     ScrnInfoPtr			 scrninfo;
     int				 drm_fd;
+    uint32_t			 drm_capabilities;
     int				 wayland_fd;
     struct wl_display		*display;
     struct wl_registry          *registry;
