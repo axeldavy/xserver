@@ -159,6 +159,9 @@ xwl_screen_init(struct xwl_screen *xwl_screen, ScreenPtr screen)
 
     xwl_screen_init_window(xwl_screen, screen);
 
+    screen->XwlAddFrameTask = xwl_add_frame_task;
+    screen->XwlAddBufferTask = xwl_add_buffer_release_task;
+
     xwl_screen_init_cursor(xwl_screen, screen);
 
     AddGeneralSocket(xwl_screen->wayland_fd);

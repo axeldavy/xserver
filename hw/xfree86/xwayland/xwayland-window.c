@@ -72,6 +72,7 @@ xwl_pixmap_attach_buffer(PixmapPtr pixmap, struct wl_buffer *buffer)
 	return;
     }
     xwl_pixmap->buffer = buffer;
+    create_buffer_listener(xwl_pixmap);
     dixSetPrivate(&pixmap->devPrivates, &xwl_pixmap_private_key, xwl_pixmap);
 }
 
@@ -221,6 +222,10 @@ xwl_unrealize_window(WindowPtr window)
     if (!xwl_window)
 	return ret;
 
+    /* The frame listener is created automatically when needed.
+     * Clean it if needed. */
+    destroy_frame_listener(xwl_window);
+
     wl_surface_destroy(xwl_window->surface);
     xorg_list_del(&xwl_window->link);
     if (RegionNotEmpty(DamageRegion(xwl_window->damage)))
@@ -244,6 +249,7 @@ xwl_destroy_pixmap(PixmapPtr pixmap)
 	struct xwl_pixmap *xwl_pixmap =
 	    dixLookupPrivate(&pixmap->devPrivates, &xwl_pixmap_private_key);
 	if (xwl_pixmap) {
+	    destroy_buffer_listener(xwl_pixmap);
 	    wl_buffer_destroy(xwl_pixmap->buffer);
 	    dixSetPrivate(&pixmap->devPrivates, &xwl_pixmap_private_key,
 			  NULL);

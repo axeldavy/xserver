@@ -93,4 +93,11 @@ extern _X_EXPORT int
 xwl_create_window_buffer_shm(struct xwl_window *xwl_window,
 			     PixmapPtr pixmap, int fd);
 
+extern _X_EXPORT Bool
+xwl_add_frame_task(WindowPtr window, pending_task_frame tocall, void *arg);
+
+extern _X_EXPORT Bool
+xwl_add_buffer_release_task(WindowPtr window,
+			    pending_task_buffer tocall, void *arg);
+
 #endif /* _XWAYLAND_H_ */

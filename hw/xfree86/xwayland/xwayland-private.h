@@ -35,10 +35,14 @@ struct xwl_window {
     DamagePtr			 damage;
     struct xorg_list		 link;
     struct xorg_list		 link_damage;
+    struct wl_callback    	*frame_callback;
+    struct wl_list		 frame_tasks;
+    struct wl_list		 buffers_tasks;
 };
 
 struct xwl_pixmap {
     struct wl_buffer		*buffer;
+    struct wl_list		 buffer_tasks;
 };
 
 struct xwl_output;
@@ -144,6 +148,11 @@ void xwl_output_remove(struct xwl_output *output);
 void xwl_pixmap_attach_buffer(PixmapPtr pixmap, struct wl_buffer *buffer);
 struct xwl_pixmap *xwl_window_get_buffer(struct xwl_window *xwl_window);
 struct xwl_window *get_xwl_window(WindowPtr window);
+
+void create_frame_listener(struct xwl_window *xwl_window);
+void destroy_frame_listener(struct xwl_window *xwl_window);
+void create_buffer_listener(struct xwl_pixmap *xwl_pixmap);
+void destroy_buffer_listener(struct xwl_pixmap *xwl_pixmap);
 
 extern const struct xserver_listener xwl_server_listener;
 

@@ -353,6 +353,19 @@ typedef Bool (*StopPixmapTrackingProcPtr)(PixmapPtr, PixmapPtr);
 
 typedef Bool (*ReplaceScanoutPixmapProcPtr)(DrawablePtr, PixmapPtr, Bool);
 
+/* XWayland specific */
+
+/* This flag indicated the pending_task is called because the object
+ * is beeing destroyed */
+#define XWL_OBJECT_DESTRUCTION 0x01
+#define XWL_WINDOW_UNREALIZE        0x02
+
+typedef void (*pending_task_buffer)(int flags, void *arg);
+typedef void (*pending_task_frame)(int flags, uint32_t time, void *arg);
+
+typedef Bool (*XwlAddFrameTaskPtr) (WindowPtr, pending_task_frame, void *);
+typedef Bool (*XwlAddBufferTaskPtr) (WindowPtr, pending_task_buffer, void *);
+
 typedef struct _Screen {
     int myNum;                  /* index of this instance in Screens[] */
     ATOM id;
@@ -513,6 +526,10 @@ typedef struct _Screen {
     struct xorg_list offload_head;
 
     ReplaceScanoutPixmapProcPtr ReplaceScanoutPixmap;
+
+    /* XWayland procedures */
+    XwlAddFrameTaskPtr XwlAddFrameTask;
+    XwlAddBufferTaskPtr XwlAddBufferTask;
 } ScreenRec;
 
 static inline RegionPtr

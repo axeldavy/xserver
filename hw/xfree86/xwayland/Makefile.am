@@ -21,6 +21,7 @@ libxwayland_la_SOURCES =			\
 	xwayland-output.c			\
 	xwayland-cursor.c			\
 	xwayland-window.c			\
+	xwayland-events.c			\
 	xwayland-private.h			\
 	drm-client-protocol.h			\
 	drm-protocol.c				\
