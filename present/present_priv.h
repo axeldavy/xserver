@@ -39,6 +39,10 @@ extern int present_request;
 
 extern DevPrivateKeyRec present_screen_private_key;
 
+#ifdef PRESENT_WAYLAND
+extern _X_EXPORT Bool xorgWayland;
+#endif
+
 typedef struct present_fence *present_fence_ptr;
 
 typedef struct present_notify present_notify_rec, *present_notify_ptr;
@@ -73,6 +77,11 @@ struct present_vblank {
     Bool                flip;           /* planning on using flip */
     Bool                sync_flip;      /* do flip synchronous to vblank */
     Bool                abort_flip;     /* aborting this flip */
+#ifdef PRESENT_WAYLAND
+    Bool                flip_allowed;
+    uint32_t            wayland_pending_events;
+    Bool                to_free;
+#endif
 };
 
 typedef struct present_screen_priv {
@@ -129,6 +138,11 @@ typedef struct present_window_priv {
     RRCrtcPtr              crtc;        /* Last reported CRTC from get_ust_msc */
     uint64_t               msc_offset;
     uint64_t               msc;         /* Last reported MSC from the current crtc */
+#ifdef PRESENT_WAYLAND
+    Bool                   msc_counter_on;
+    uint32_t               last_msc_update;
+    Bool                   pixmap_is_flip;
+#endif
     struct xorg_list       vblank;
     struct xorg_list       notifies;
 } present_window_priv_rec, *present_window_priv_ptr;
@@ -149,6 +163,22 @@ extern RESTYPE present_event_type;
 /*
  * present.c
  */
+void
+present_copy_region(DrawablePtr drawable,
+                    PixmapPtr pixmap,
+                    RegionPtr update,
+                    int16_t x_off,
+                    int16_t y_off);
+
+void
+present_vblank_notify(present_vblank_ptr vblank, CARD8 kind, CARD8 mode, uint64_t ust, uint64_t crtc_msc);
+
+void
+present_pixmap_idle(PixmapPtr pixmap, WindowPtr window, CARD32 serial, struct present_fence *present_fence);
+
+void
+present_set_tree_pixmap(WindowPtr window, PixmapPtr pixmap);
+
 int
 present_pixmap(WindowPtr window,
                PixmapPtr pixmap,
@@ -298,5 +328,13 @@ sproc_present_dispatch(ClientPtr client);
 /*
  * present_screen.c
  */
+#ifdef PRESENT_WAYLAND
+/*
+ * present_wayland.c
+ */
+void
+present_wayland_execute(present_vblank_ptr vblank);
+
+#endif
 
 #endif /*  _PRESENT_PRIV_H_ */

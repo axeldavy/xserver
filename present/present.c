@@ -45,7 +45,7 @@ static struct xorg_list present_flip_queue;
 /*
  * Copies the update region from a pixmap to the target drawable
  */
-static void
+void
 present_copy_region(DrawablePtr drawable,
                     PixmapPtr pixmap,
                     RegionPtr update,
@@ -167,7 +167,7 @@ present_flip(RRCrtcPtr crtc,
     return (*screen_priv->info->flip) (crtc, event_id, target_msc, pixmap, sync_flip);
 }
 
-static void
+void
 present_vblank_notify(present_vblank_ptr vblank, CARD8 kind, CARD8 mode, uint64_t ust, uint64_t crtc_msc)
 {
     int         n;
@@ -183,7 +183,7 @@ present_vblank_notify(present_vblank_ptr vblank, CARD8 kind, CARD8 mode, uint64_
     }
 }
 
-static void
+void
 present_pixmap_idle(PixmapPtr pixmap, WindowPtr window, CARD32 serial, struct present_fence *present_fence)
 {
     if (present_fence)
@@ -329,7 +329,7 @@ present_set_tree_pixmap_visit(WindowPtr window, void *data)
     return WT_WALKCHILDREN;
 }
     
-static void
+void
 present_set_tree_pixmap(WindowPtr window, PixmapPtr pixmap)
 {
     struct pixmap_visit visit;
@@ -462,7 +462,13 @@ present_check_flip_window (WindowPtr window)
 
     if (screen_priv->unflip_event_id)
         return;
-
+#ifdef PRESENT_WAYLAND
+    /* In the XWayland case, unflipping is handled automatically
+     * if the window resizes. In the other cases, we don't need to
+     * unflip */
+    if (xorgWayland)
+        return;
+#endif
     if (flip_pending) {
         /*
          * Check pending flip
@@ -663,15 +669,23 @@ present_pixmap(WindowPtr window,
         if (!target_crtc)
             target_crtc = present_get_crtc(window);
     }
+#ifdef PRESENT_WAYLAND
+    if (!xorgWayland) {
+#endif
+        present_get_ust_msc(window, target_crtc, &ust, &crtc_msc);
 
-    present_get_ust_msc(window, target_crtc, &ust, &crtc_msc);
+        target_msc = present_window_to_crtc_msc(window, target_crtc, window_msc, crtc_msc);
 
-    target_msc = present_window_to_crtc_msc(window, target_crtc, window_msc, crtc_msc);
-
-    /* Stash the current MSC away in case we need it later
-     */
-    window_priv->msc = crtc_msc;
-
+        /* Stash the current MSC away in case we need it later
+         */
+        window_priv->msc = crtc_msc;
+#ifdef PRESENT_WAYLAND
+    } else {
+        /* for now msc is a per-window thing for XWayland */
+        crtc_msc = window_priv->msc;
+        target_msc = window_msc;
+    }
+#endif
     /* Adjust target_msc to match modulus
      */
     if (crtc_msc >= target_msc) {
@@ -686,7 +700,11 @@ present_pixmap(WindowPtr window,
             }
         } else {
             target_msc = crtc_msc;
+#ifdef PRESENT_WAYLAND
+            if (!xorgWayland && !(options & PresentOptionAsync))
+#else
             if (!(options & PresentOptionAsync))
+#endif
                 target_msc++;
         }
     }
@@ -760,16 +778,22 @@ present_pixmap(WindowPtr window,
     vblank->msc_offset = window_priv->msc_offset;
     vblank->notifies = notifies;
     vblank->num_notifies = num_notifies;
+#ifdef PRESENT_WAYLAND
+    if (xorgWayland) {
+        vblank->flip_allowed = TRUE;
+    } else {
+#endif
+        if (!screen_priv->info || !(screen_priv->info->capabilities & PresentCapabilityAsync))
+            vblank->sync_flip = TRUE;
 
-    if (!screen_priv->info || !(screen_priv->info->capabilities & PresentCapabilityAsync))
-        vblank->sync_flip = TRUE;
-
-    if (pixmap && present_check_flip (target_crtc, window, pixmap, vblank->sync_flip, valid, x_off, y_off)) {
-        vblank->flip = TRUE;
-        if (vblank->sync_flip)
-            target_msc--;
+        if (pixmap && present_check_flip (target_crtc, window, pixmap, vblank->sync_flip, valid, x_off, y_off)) {
+            vblank->flip = TRUE;
+            if (vblank->sync_flip)
+                target_msc--;
+        }
+#ifdef PRESENT_WAYLAND
     }
-
+#endif
     if (wait_fence) {
         vblank->wait_fence = present_fence_create(wait_fence);
         if (!vblank->wait_fence)
@@ -788,8 +812,17 @@ present_pixmap(WindowPtr window,
                       vblank->pixmap->drawable.id, vblank->window->drawable.id,
                       target_crtc));
 
-    xorg_list_add(&vblank->event_queue, &present_exec_queue);
     vblank->queued = TRUE;
+
+#ifdef PRESENT_WAYLAND
+    if (xorgWayland) {
+        present_wayland_execute(vblank);
+        return Success;
+    }
+#endif
+
+    xorg_list_add(&vblank->event_queue, &present_exec_queue);
+
     if (target_msc >= crtc_msc) {
         ret = present_queue_vblank(screen, target_crtc, vblank->event_id, target_msc);
         if (ret != Success) {
@@ -897,8 +930,12 @@ present_vblank_destroy(present_vblank_ptr vblank)
 
     if (vblank->notifies)
         present_destroy_notifies(vblank->notifies, vblank->num_notifies);
-
-    free(vblank);
+#ifdef PRESENT_WAYLAND
+    if (vblank->wayland_pending_events)
+        vblank->to_free = TRUE;
+    else
+#endif
+        free(vblank);
 }
 
 Bool
