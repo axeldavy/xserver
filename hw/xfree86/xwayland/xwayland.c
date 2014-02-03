@@ -161,6 +161,7 @@ xwl_screen_init(struct xwl_screen *xwl_screen, ScreenPtr screen)
 
     screen->XwlAddFrameTask = xwl_add_frame_task;
     screen->XwlAddBufferTask = xwl_add_buffer_release_task;
+    screen->XwlGetVisibleParentWindow = xwl_get_visible_parent_window;
 
     xwl_screen_init_cursor(xwl_screen, screen);
 

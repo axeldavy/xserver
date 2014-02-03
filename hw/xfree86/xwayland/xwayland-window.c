@@ -286,6 +286,39 @@ xwl_move_window(WindowPtr window, int x, int y,
 	return;
 }
 
+WindowPtr xwl_get_visible_parent_window(WindowPtr window)
+{
+    ScreenPtr screen = window->drawable.pScreen;
+    struct xwl_screen *xwl_screen;
+    struct xwl_window *xwl_window;
+    WindowPtr root = screen->root;
+    WindowPtr current = window;
+
+    xwl_screen = xwl_screen_get(screen);
+
+    while (current->redirectDraw != RedirectDrawManual
+	   && current->parent
+	   && current->parent->parent)
+	current = current->parent;
+
+    xwl_window =
+	dixLookupPrivate(&current->devPrivates, &xwl_window_private_key);
+
+    if (xwl_screen->flags & XWL_FLAGS_ROOTLESS) {
+	if (current->parent != root
+	    || current == root /* root window isn't visible */
+	    || current->redirectDraw != RedirectDrawManual
+	    || !xwl_window /* not mapped */)
+	    return NULL;
+	return current;
+    } else {
+	if (current != root || !xwl_window)
+	    return NULL;
+	else
+	    return root;
+    }
+}
+
 int
 xwl_screen_init_window(struct xwl_screen *xwl_screen, ScreenPtr screen)
 {

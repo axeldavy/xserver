@@ -365,6 +365,7 @@ typedef void (*pending_task_frame)(int flags, uint32_t time, void *arg);
 
 typedef Bool (*XwlAddFrameTaskPtr) (WindowPtr, pending_task_frame, void *);
 typedef Bool (*XwlAddBufferTaskPtr) (WindowPtr, pending_task_buffer, void *);
+typedef WindowPtr (*XwlGetVisibleParentWindowPtr) (WindowPtr);
 
 typedef struct _Screen {
     int myNum;                  /* index of this instance in Screens[] */
@@ -530,6 +531,7 @@ typedef struct _Screen {
     /* XWayland procedures */
     XwlAddFrameTaskPtr XwlAddFrameTask;
     XwlAddBufferTaskPtr XwlAddBufferTask;
+    XwlGetVisibleParentWindowPtr XwlGetVisibleParentWindow;
 } ScreenRec;
 
 static inline RegionPtr

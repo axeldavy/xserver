@@ -100,4 +100,7 @@ extern _X_EXPORT Bool
 xwl_add_buffer_release_task(WindowPtr window,
 			    pending_task_buffer tocall, void *arg);
 
+extern _X_EXPORT WindowPtr
+xwl_get_visible_parent_window(WindowPtr window);
+
 #endif /* _XWAYLAND_H_ */
