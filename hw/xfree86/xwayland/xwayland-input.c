@@ -542,9 +542,9 @@ add_devices(void *data, struct wl_callback *callback, uint32_t time)
 
     wl_callback_destroy(callback);
 
-    if (xwl_seat->wl_pointer)
+    if (xwl_seat->wl_pointer && !xwl_seat->pointer)
 	xwl_seat->pointer = device_added(xwl_seat, "xwayland-pointer");
-    if (xwl_seat->wl_keyboard)
+    if (xwl_seat->wl_keyboard && !xwl_seat->keyboard)
 	xwl_seat->keyboard = device_added(xwl_seat, "xwayland-keyboard");
 }
 
@@ -558,24 +558,32 @@ seat_handle_capabilities(void *data, struct wl_seat *seat,
 {
 	struct xwl_seat *xwl_seat = data;
 	struct wl_callback *callback;
+	Bool update = FALSE;
 
-	if (caps & WL_SEAT_CAPABILITY_POINTER) {
+	if (caps & WL_SEAT_CAPABILITY_POINTER && !xwl_seat->wl_pointer) {
 	    xwl_seat->wl_pointer = wl_seat_get_pointer(seat);
 	    wl_pointer_add_listener(xwl_seat->wl_pointer,
 				    &pointer_listener, xwl_seat);
             xwl_seat_set_cursor(xwl_seat);
+	    update = TRUE;
+	} else if (!(caps & WL_SEAT_CAPABILITY_POINTER) && xwl_seat->wl_pointer) {
+	    wl_pointer_destroy(xwl_seat->wl_pointer);
+	    xwl_seat->wl_pointer = NULL;
 	}
 
-	if (caps & WL_SEAT_CAPABILITY_KEYBOARD) {
+	if (caps & WL_SEAT_CAPABILITY_KEYBOARD && !xwl_seat->wl_keyboard) {
 	    xwl_seat->wl_keyboard = wl_seat_get_keyboard(seat);
 	    wl_keyboard_add_listener(xwl_seat->wl_keyboard,
 				     &keyboard_listener, xwl_seat);
-
+	    update = TRUE;
+	} else if (!(caps & WL_SEAT_CAPABILITY_KEYBOARD) && xwl_seat->wl_keyboard) {
+	    wl_keyboard_destroy(xwl_seat->wl_keyboard);
+	    xwl_seat->wl_keyboard = NULL;
 	}
         /* FIXME: Touch ... */
 
 	/* Add devices after we've received keymaps. */
-	if (caps) {
+	if (update) {
 	    callback = wl_display_sync(xwl_seat->xwl_screen->display);
 	    wl_callback_add_listener(callback,
 				     &add_devices_listener, xwl_seat);
