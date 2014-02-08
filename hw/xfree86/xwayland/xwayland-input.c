@@ -125,8 +125,6 @@ xwl_pointer_proc(DeviceIntPtr device, int what)
 static void
 xwl_keyboard_control(DeviceIntPtr device, KeybdCtrl *ctrl)
 {
-    /* FIXME: Set keyboard leds based on CAPSFLAG etc being set in
-     * ctrl->leds - needs private protocol. */
 }
 
 static int
