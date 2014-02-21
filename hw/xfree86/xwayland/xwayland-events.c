@@ -115,17 +115,24 @@ static void
 wl_buffer_release_event(void *data, struct wl_buffer *buffer)
 {
     struct xwl_pixmap *xwl_pixmap = data;
+    PixmapPtr pixmap = xwl_pixmap->pixmap;
+    ScreenPtr screen = pixmap->drawable.pScreen;
+    uint32_t pending_destroy;
     struct wl_list task_list;
     struct _task *task;
 
-    if (wl_list_empty(&xwl_pixmap->buffer_tasks))
-	return;
-    wl_list_init(&task_list);
-    wl_list_insert_list(&task_list, &xwl_pixmap->buffer_tasks);
-    wl_list_init(&xwl_pixmap->buffer_tasks);
-    wl_list_for_each(task, &task_list, link_pixmap)
-	task->tocall.tfb(0, task->args);
-    task_list_free_pixmap(&task_list);
+    if (!wl_list_empty(&xwl_pixmap->buffer_tasks)) {
+	wl_list_init(&task_list);
+	wl_list_insert_list(&task_list, &xwl_pixmap->buffer_tasks);
+	wl_list_init(&xwl_pixmap->buffer_tasks);
+	wl_list_for_each(task, &task_list, link_pixmap)
+	    task->tocall.tfb(0, task->args);
+	task_list_free_pixmap(&task_list);
+    }
+    pending_destroy = xwl_pixmap->pending_destroy;
+    xwl_pixmap->pending_destroy = 0;
+    for (;pending_destroy--;)
+	screen->DestroyPixmap(pixmap);
 }
 
 static struct wl_buffer_listener wl_buffer_listener = {
@@ -228,4 +235,17 @@ xwl_add_buffer_release_task(WindowPtr window,
     wl_list_insert(xwl_pixmap->buffer_tasks.prev, &task->link_pixmap);
     wl_list_insert(xwl_window->buffers_tasks.prev, &task->link_window);
     return TRUE;
+}
+
+void
+wait_release_to_destroy(PixmapPtr pixmap)
+{
+    ScreenPtr screen = pixmap->drawable.pScreen;
+    struct xwl_pixmap *xwl_pixmap = pixmap_get_buffer(pixmap);
+
+    if (!xwl_pixmap) {
+	screen->DestroyPixmap(pixmap);
+	return;
+    }
+    xwl_pixmap->pending_destroy++;
 }

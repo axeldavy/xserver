@@ -144,6 +144,22 @@ block_handler(void *data, struct timeval **tv, void *read_mask)
         FatalError("failed to write to XWayland fd: %s\n", strerror(errno));
 }
 
+static void
+xwl_pre_close_screen(ScreenPtr screen)
+{
+    struct xwl_screen *xwl_screen = xwl_screen_get(screen);
+    struct xwl_pixmap *xwl_pixmap, *ptmp;
+    uint32_t pending_destroy;
+
+    xorg_list_for_each_entry_safe(xwl_pixmap, ptmp,
+				  &xwl_screen->buffer_list, link) {
+	pending_destroy = xwl_pixmap->pending_destroy;
+	xwl_pixmap->pending_destroy = 0;
+	for (;pending_destroy--;)
+	    screen->DestroyPixmap(xwl_pixmap->pixmap);
+    }
+}
+
 int
 xwl_screen_init(struct xwl_screen *xwl_screen, ScreenPtr screen)
 {
@@ -170,6 +186,8 @@ xwl_screen_init(struct xwl_screen *xwl_screen, ScreenPtr screen)
 
     callback = wl_display_sync(xwl_screen->display);
     wl_callback_add_listener(callback, &delayed_init_listner, xwl_screen);
+
+    screen->PreCloseScreen = xwl_pre_close_screen;
 
     return Success;
 }
@@ -212,6 +230,7 @@ xwl_screen_pre_init(ScrnInfoPtr scrninfo, struct xwl_screen *xwl_screen,
     xorg_list_init(&xwl_screen->seat_list);
     xorg_list_init(&xwl_screen->damage_window_list);
     xorg_list_init(&xwl_screen->window_list);
+    xorg_list_init(&xwl_screen->buffer_list);
     xorg_list_init(&xwl_screen->authenticate_client_list);
     xwl_screen->scrninfo = scrninfo;
     xwl_screen->driver = driver;

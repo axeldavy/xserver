@@ -95,6 +95,8 @@ typedef struct _ScreenSaverStuff {
  *  or as a local variable) can easily do so and retain full type checking.
  */
 
+typedef void (*PreCloseScreenProcPtr) (ScreenPtr /*pScreen */ );
+
 typedef Bool (*CloseScreenProcPtr) (ScreenPtr /*pScreen */ );
 
 typedef void (*QueryBestSizeProcPtr) (int /*class */ ,
@@ -399,6 +401,7 @@ typedef struct _Screen {
 
     /* Random screen procedures */
 
+    PreCloseScreenProcPtr PreCloseScreen;
     CloseScreenProcPtr CloseScreen;
     QueryBestSizeProcPtr QueryBestSize;
     SaveScreenProcPtr SaveScreen;

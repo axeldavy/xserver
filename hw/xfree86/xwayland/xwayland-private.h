@@ -41,8 +41,11 @@ struct xwl_window {
 };
 
 struct xwl_pixmap {
+    PixmapPtr			 pixmap;
+    struct xorg_list		 link;
     struct wl_buffer		*buffer;
     struct wl_list		 buffer_tasks;
+    uint32_t			 pending_destroy;
 };
 
 struct xwl_output;
@@ -71,6 +74,7 @@ struct xwl_screen {
     struct xorg_list		 seat_list;
     struct xorg_list		 damage_window_list;
     struct xorg_list		 window_list;
+    struct xorg_list		 buffer_list;
     struct xorg_list		 authenticate_client_list;
     uint32_t			 serial;
     Bool                         outputs_initialized;
@@ -81,6 +85,7 @@ struct xwl_screen {
     DestroyWindowProcPtr	 DestroyWindow;
     RealizeWindowProcPtr	 RealizeWindow;
     UnrealizeWindowProcPtr	 UnrealizeWindow;
+    SetWindowPixmapProcPtr	 SetWindowPixmap;
     DestroyPixmapProcPtr	 DestroyPixmap;
     MoveWindowProcPtr		 MoveWindow;
     miPointerSpriteFuncPtr	 sprite_funcs;
@@ -146,6 +151,7 @@ void xwl_seat_set_cursor(struct xwl_seat *xwl_seat);
 void xwl_output_remove(struct xwl_output *output);
 
 void xwl_pixmap_attach_buffer(PixmapPtr pixmap, struct wl_buffer *buffer);
+struct xwl_pixmap *pixmap_get_buffer(PixmapPtr pixmap);
 struct xwl_pixmap *xwl_window_get_buffer(struct xwl_window *xwl_window);
 struct xwl_window *get_xwl_window(WindowPtr window);
 
@@ -153,6 +159,7 @@ void create_frame_listener(struct xwl_window *xwl_window);
 void destroy_frame_listener(struct xwl_window *xwl_window);
 void create_buffer_listener(struct xwl_pixmap *xwl_pixmap);
 void destroy_buffer_listener(struct xwl_pixmap *xwl_pixmap);
+void wait_release_to_destroy(PixmapPtr pixmap);
 
 extern const struct xserver_listener xwl_server_listener;
 
