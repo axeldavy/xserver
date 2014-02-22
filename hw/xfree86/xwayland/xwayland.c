@@ -218,6 +218,14 @@ xwl_screen_create(void)
     return xwl_screen;
 }
 
+#ifndef WITH_LIBDRM
+int
+xwl_drm_pre_init(struct xwl_screen *xwl_screen)
+{
+    return BadImplementation;
+}
+#endif
+
 Bool
 xwl_screen_pre_init(ScrnInfoPtr scrninfo, struct xwl_screen *xwl_screen,
 		    uint32_t flags, struct xwl_driver *driver)
@@ -250,12 +258,6 @@ xwl_screen_pre_init(ScrnInfoPtr scrninfo, struct xwl_screen *xwl_screen,
                    "failed to dispatch Wayland events: %s\n", strerror(errno));
         return FALSE;
     }
-
-#ifdef WITH_LIBDRM
-    if (xwl_screen->driver->use_drm && !xwl_drm_initialised(xwl_screen))
-	if (xwl_drm_pre_init(xwl_screen) != Success)
-            return FALSE;
-#endif
 
     xwayland_screen_preinit_output(xwl_screen, scrninfo);
 

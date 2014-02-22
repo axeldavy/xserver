@@ -36,7 +36,6 @@ struct xwl_screen;
 
 struct xwl_driver {
     int version;
-    int use_drm;
     int (*create_window_buffer)(struct xwl_window *xwl_window,
                                 PixmapPtr pixmap);
 };
