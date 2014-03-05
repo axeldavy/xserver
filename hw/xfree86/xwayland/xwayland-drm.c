@@ -29,6 +29,7 @@
 
 #include <unistd.h>
 #include <fcntl.h>
+#include <errno.h>
 #include <sys/stat.h>
 
 #include <xf86drm.h>
@@ -162,7 +163,15 @@ xwl_device_get_fd(struct xwl_screen *xwl_screen)
     uint32_t magic;
     int fd;
 
-    fd = open(xwl_screen->device_name, O_RDWR);
+#ifdef O_CLOEXEC
+    fd = open(xwl_screen->device_name, O_RDWR | O_CLOEXEC);
+    if (fd == -1 && errno == EINVAL)
+#endif
+    {
+	fd = open(xwl_screen->device_name, O_RDWR);
+	if (fd != -1)
+	    fcntl(fd, F_SETFD, fcntl(fd, F_GETFD) | FD_CLOEXEC);
+    }
     if (fd < 0) {
 	ErrorF("failed to open the drm fd\n");
 	return -1;
